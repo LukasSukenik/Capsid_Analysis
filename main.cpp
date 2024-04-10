@@ -145,7 +145,6 @@ void analyzeAll(int start, int stop, double force_aver)
 double analyzeThermo(int start, int stop)
 {
     Dodecahedron dode;
-
     if( dode.loadAnalyze("thermo", start, stop) ) // load and at the same time analyze -> several GB worth of data, must be done at the same time
     {
         ofstream average_force;

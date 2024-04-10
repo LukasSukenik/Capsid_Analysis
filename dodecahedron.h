@@ -95,7 +95,7 @@ public:
         ifstream input (inName, std::ifstream::in);
         string line;
         stringstream ss;
-        int step;
+        int timestep;
         LammpsCapsidParam param_current;
         bool first = true;
 
@@ -103,20 +103,31 @@ public:
         {
             getline(input, line);
             ss.str(line);
-            ss >> step;
+            ss >> timestep;
 
+            //
+            // Store thermo capsid parameters
+            //
             for(int i=2; i<param_current.param.size(); ++i)
-            { // 2 intentionally, from disasoc.sh
+            {
                 ss >> param_current.param[i]; // store data from log
             }
+
+            //
+            // Set Interaction thresholds
+            //
             if( first )
             {
                 setInteractionThreshold(param_current);
-                start += step;
-                stop += step;
+                start += timestep;
+                stop += timestep;
                 first = false;
             }
-            if( stepAnalyze(step, param_current, start, stop) ) // analyze the step
+
+            //
+            // Analyze each step
+            //
+            if( stepAnalyze(timestep, param_current, start, stop) ) // analyze the step
             {
                 break;
             }
@@ -266,14 +277,14 @@ private:
      * @param step
      * @return
      */
-    bool stepAnalyze(const int step, LammpsCapsidParam& param, int start, int stop)
+    bool stepAnalyze(const int timestep, LammpsCapsidParam& param, int start, int stop)
     {
         /*for(int i=18; i<=83; ++i)
         {
             energy[i].push(param.param[i]);
         }*/
 
-        if(step > start && step < stop)
+        if(timestep > start && timestep < stop)
         {
             pen_chain_E   += param.get_pentamer_chain_energy();    pen_chain_F   += param.get_pentamer_chain_force();
             pen_pen_E     += param.get_pentamer_pentamer_energy(); pen_pen_F     += param.get_pentamer_pentamer_force();
@@ -292,10 +303,10 @@ private:
                 half_chain[i] += param.get_half_genome_F(i);
             }
 
-            if(step%(block_size*thermo_step) == 0)
+            if(timestep%(block_size*thermo_step) == 0)
             {
 
-                plot_data << step << " " << pen_chain_E/block_size << " " << pen_chain_F/block_size // penta-chain
+                plot_data << timestep << " " << pen_chain_E/block_size << " " << pen_chain_F/block_size // penta-chain
                     << " " << pen_pen_E/block_size << " " << pen_pen_F/block_size                   // penta-penta
                     << " " << chain_chain_E/block_size << " " << chain_chain_F/block_size;          // chain-chain
                 for(int i=0; i<12; ++i)
@@ -306,7 +317,7 @@ private:
                 }
                 plot_data << "\n";
 
-                plot_halfs << step << " ";
+                plot_halfs << timestep << " ";
                 for(int i=0; i<6; ++i)
                 {
                     plot_halfs << " " << halfs[i]/block_size << " " << half_chain[i]/block_size;
@@ -326,7 +337,7 @@ private:
         //
         // Set average penta-penta and chain-penta energy
         //
-        if(step < 20000)
+        if(timestep < 20000)
         {
             perStep_Aver_penta_penta_E.push_back( param.get_pentamer_pentamer_energy()/30 );
             perStep_Aver_chain_penta_E.push_back( param.get_pentamer_chain_energy() );
@@ -335,10 +346,10 @@ private:
         //
         // identify genome release -> zero pressure exerted by genome on capsid
         //
-        if( step > 20000 && !param_zero_press.set && param.get_pentamer_chain_energy() < pressure_limit)  // pressure_limit basically 0, set the time release finished
+        if( timestep > 20000 && !param_zero_press.set && param.get_pentamer_chain_energy() < pressure_limit)  // pressure_limit basically 0, set the time release finished
         {
             param_zero_press.set = true;
-            param_zero_press.step = step;
+            param_zero_press.step = timestep;
             param_zero_press.param = param.param;
             param_zero_press.pressure = param.get_pentamer_chain_energy();
         }
@@ -346,10 +357,10 @@ private:
         //
         // identify ongoing genome release -> minimal pressure exerted by genome on capsid
         //
-        if( step > 20000 && !param_half_press.set && param.get_pentamer_chain_energy() < 0.5 * getAverageP() )
+        if( timestep > 20000 && !param_half_press.set && param.get_pentamer_chain_energy() < 0.5 * getAverageP() )
         {
             param_half_press.set = true;
-            param_half_press.step = step;
+            param_half_press.step = timestep;
             param_half_press.param = param.param;
             param_half_press.pressure = param.get_pentamer_chain_energy();
         }
@@ -357,7 +368,7 @@ private:
         //
         // save state after 500 ns after detection of release process start
         //
-        if(param_zero_press.set && step > later + param_zero_press.step)
+        if(param_zero_press.set && timestep > later + param_zero_press.step)
         {
             param_500ns.param = param.param;
             param_500ns.set = true;
@@ -366,10 +377,10 @@ private:
         //
         // save any changes in pentamer conectivity for mollweide diagram
         //
-        if( stateChange(step, param) )
+        if( stateChange(timestep, param) )
         {
             connectionMap.interactions = param.getConnectionMap( interaction_min ); // refresh connection map, next time function call we are looking at difference vs the last change
-            connectionMap.time=step;
+            connectionMap.time=timestep;
             states.push_back(connectionMap);
         }
 
@@ -558,7 +569,7 @@ private:
 
     void setInteractionThreshold(LammpsCapsidParam& param)
     {
-        double interaction_sum=0.0; // pressure sum in kT
+        double interaction_sum=0.0; // interaction sum in kT
         int count=0; // count of pentamer-pentamer interactions == number of pentamer-pentamer interfaces
 
         for(int i=18; i<=83; ++i)
@@ -567,6 +578,7 @@ private:
             if(param.param[i] != 0.0)
                 count++;
         }
+
         interaction_min = interaction_factor*interaction_sum/count;
 
         mollweide.fullMap.interactions = param.getConnectionMap(interaction_min);
